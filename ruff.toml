@@ -1,7 +1,7 @@
-[ruff]
 line-length = 100
 target-version = "py39"
 
+[lint]
 # Ignore overly strict docstring rules
 ignore = [
     "D100",  # Missing docstring in public module
@@ -15,6 +15,3 @@ ignore = [
     "D415",  # First line should end with punctuation
     "I001",  # Import block is un-sorted
 ]
-
-[ruff.lint.isort]
-force-single-line = false
