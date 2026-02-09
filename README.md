@@ -8,6 +8,10 @@
 
 Fortress uses Python's `secrets` module to generate passwords that are suitable for security-sensitive applications. It includes entropy calculation, strength estimation, and a beautiful CLI.
 
+<p align="center">
+  <img src="docs/demo.png" alt="Fortress Demo" width="600" />
+</p>
+
 ## ✨ Features
 
 | Feature | Description |
