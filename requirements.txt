@@ -1,4 +1,0 @@
-colorama==0.4.4
-inquirer==2.7.0
-pyfiglet==0.8.post1
-tqdm==4.62.3
