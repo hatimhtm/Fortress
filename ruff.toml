@@ -2,8 +2,9 @@ line-length = 100
 target-version = "py39"
 
 [lint]
-# Ignore overly strict docstring rules
+# Ignore overly strict docstring rules and unused imports (many are re-exports)
 ignore = [
+    "F401",  # Unused imports (many are intentional re-exports)
     "D100",  # Missing docstring in public module
     "D101",  # Missing docstring in public class  
     "D102",  # Missing docstring in public method
