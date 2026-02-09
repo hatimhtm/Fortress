@@ -1,0 +1,20 @@
+[ruff]
+line-length = 100
+target-version = "py39"
+
+# Ignore overly strict docstring rules
+ignore = [
+    "D100",  # Missing docstring in public module
+    "D101",  # Missing docstring in public class  
+    "D102",  # Missing docstring in public method
+    "D103",  # Missing docstring in public function
+    "D104",  # Missing docstring in public package
+    "D203",  # 1 blank line required before class docstring
+    "D212",  # Multi-line docstring summary should start at the first line
+    "D400",  # First line should end with a period
+    "D415",  # First line should end with punctuation
+    "I001",  # Import block is un-sorted
+]
+
+[ruff.lint.isort]
+force-single-line = false
