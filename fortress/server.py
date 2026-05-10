@@ -5,7 +5,7 @@ POST/GET can ask for a password (or check one). Lazy imports so FastAPI is
 truly optional — install via `pip install 'fortress[server]'`.
 """
 
-from __future__ import annotations
+import dataclasses
 
 
 def create_app():
@@ -88,7 +88,7 @@ def create_app():
     # ── Helpers ─────────────────────────────────────────────────
 
     def _ct(entropy: float) -> CrackTimesOut:
-        return CrackTimesOut(**crack_times(entropy).__dict__)
+        return CrackTimesOut(**dataclasses.asdict(crack_times(entropy)))
 
     # ── Routes ──────────────────────────────────────────────────
 

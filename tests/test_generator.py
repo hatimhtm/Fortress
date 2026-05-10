@@ -83,7 +83,7 @@ class TestGeneratePassword:
         cfg = PasswordConfig(length=200, no_repeat=True)
         for _ in range(5):
             p = generate_password(config=cfg)
-            for a, b in zip(p, p[1:], strict=True):
+            for a, b in zip(p[:-1], p[1:], strict=True):
                 assert a != b, f"adjacent dupes found in {p!r}"
 
     def test_no_repeat_with_tiny_charset_raises(self):
@@ -94,6 +94,7 @@ class TestGeneratePassword:
             use_digits=False,
             use_symbols=False,
             custom_chars="a",
+            no_repeat=True,
         )
         with pytest.raises(ValueError, match="at least 2"):
             generate_password(config=cfg)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import sys
 
@@ -151,7 +152,7 @@ def generate(
                     "charset_size": charset_size,
                     "entropy_bits": round(entropy, 2),
                     "strength": label,
-                    "crack_times": crack_times(entropy).__dict__,
+                    "crack_times": dataclasses.asdict(crack_times(entropy)),
                 }
             )
             continue
@@ -194,7 +195,7 @@ def passphrase(
                     "word_count": words,
                     "entropy_bits": round(entropy, 2),
                     "strength": label,
-                    "crack_times": crack_times(entropy).__dict__,
+                    "crack_times": dataclasses.asdict(crack_times(entropy)),
                 }
             )
             continue
@@ -276,7 +277,7 @@ def check(
                 "is_common": common,
                 "pwned_count": pwned_hits,
                 "pwned_error": pwned_error,
-                "crack_times": crack_times(entropy).__dict__,
+                "crack_times": dataclasses.asdict(crack_times(entropy)),
             }
         )
         return
