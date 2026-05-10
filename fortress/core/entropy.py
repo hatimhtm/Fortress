@@ -1,155 +1,149 @@
-"""Entropy calculation and password strength estimation."""
+"""Entropy estimation and crack-time scenarios.
+
+Two distinct functions:
+
+- `entropy_of_random(length, charset_size)` — exact entropy of a uniformly
+  random selection. Use this when you generated the password yourself.
+- `estimate_entropy(password)` — heuristic upper bound based on character
+  classes present. Use this when you don't know how the password was made
+  (e.g. user-supplied via `fortress check`).
+
+For human-chosen passwords both formulas overstate the real entropy
+substantially — a real password-strength analyser would use zxcvbn. We
+intentionally don't bundle zxcvbn (heavy dep, JS-derived) but document
+the limitation in the README.
+"""
+
+from __future__ import annotations
 
 import math
 import string
-from typing import Tuple
+from dataclasses import dataclass
 
 
-def calculate_entropy(password: str) -> float:
-    """Calculate the entropy of a password in bits.
-    
-    Entropy is a measure of password strength. Higher entropy means
-    a stronger password. The formula is:
-    
-        entropy = log2(charset_size ^ password_length)
-               = password_length * log2(charset_size)
-    
-    Args:
-        password: The password to analyze.
-        
-    Returns:
-        Entropy value in bits.
-        
-    Examples:
-        >>> calculate_entropy("abc")  # 3 chars from 26 lowercase
-        14.1...
-        
-        >>> calculate_entropy("Abc1!")  # Mixed charset
-        32.9...
+@dataclass(frozen=True, slots=True)
+class CrackTimes:
+    """Estimated time-to-crack across attacker scenarios."""
+
+    online_throttled: str  # 100 guesses/sec — login form with rate limiting
+    online_unthrottled: str  # 10 guesses/sec * 1000 IPs = 10k/sec
+    offline_slow_hash: str  # 10^4/sec — bcrypt cost=12
+    offline_fast_hash: str  # 10^10/sec — single GPU on a fast hash
+    offline_specialized: str  # 10^12/sec — ASIC/cluster on a fast hash
+
+
+# Maps the rough character class size used by `estimate_entropy`.
+_CHARSET_LOWER = set(string.ascii_lowercase)
+_CHARSET_UPPER = set(string.ascii_uppercase)
+_CHARSET_DIGIT = set(string.digits)
+_CHARSET_SYMBOL = set(string.punctuation)
+
+
+def entropy_of_random(length: int, charset_size: int) -> float:
+    """Exact entropy of a uniformly random password of `length` from `charset_size`.
+
+    Use this when Fortress generated the password — we know the inputs.
+    """
+    if length <= 0 or charset_size <= 1:
+        return 0.0
+    return length * math.log2(charset_size)
+
+
+def estimate_entropy(password: str) -> float:
+    """Heuristic entropy of an arbitrary password.
+
+    Determined by character classes present (lower/upper/digit/symbol/other)
+    and the password length. Always an overestimate for human-chosen
+    passwords — see module docstring.
     """
     if not password:
         return 0.0
-        
-    charset_size = _estimate_charset_size(password)
-    
-    if charset_size <= 1:
-        return 0.0
-        
-    # Entropy = length * log2(charset_size)
-    entropy = len(password) * math.log2(charset_size)
-    
-    return entropy
 
-
-def _estimate_charset_size(password: str) -> int:
-    """Estimate the character set size used in the password.
-    
-    This estimates based on character categories present:
-    - Lowercase letters: 26
-    - Uppercase letters: 26
-    - Digits: 10
-    - Symbols: 32
-    
-    Args:
-        password: The password to analyze.
-        
-    Returns:
-        Estimated size of the character set.
-    """
     size = 0
-    
-    has_lower = any(c in string.ascii_lowercase for c in password)
-    has_upper = any(c in string.ascii_uppercase for c in password)
-    has_digit = any(c in string.digits for c in password)
-    has_symbol = any(c in string.punctuation for c in password)
-    has_other = any(
-        c not in string.ascii_letters + string.digits + string.punctuation
-        for c in password
-    )
-    
-    if has_lower:
+    chars = set(password)
+    if chars & _CHARSET_LOWER:
         size += 26
-    if has_upper:
+    if chars & _CHARSET_UPPER:
         size += 26
-    if has_digit:
+    if chars & _CHARSET_DIGIT:
         size += 10
-    if has_symbol:
+    if chars & _CHARSET_SYMBOL:
         size += 32
-    if has_other:
-        size += 100  # Unicode characters
-        
-    return size
+    if any(
+        c not in (_CHARSET_LOWER | _CHARSET_UPPER | _CHARSET_DIGIT | _CHARSET_SYMBOL)
+        for c in password
+    ):
+        size += 100  # rough Unicode fudge
+
+    if size <= 1:
+        return 0.0
+    return len(password) * math.log2(size)
 
 
-def get_strength_label(entropy: float) -> Tuple[str, str]:
-    """Get a human-readable strength label and color based on entropy.
-    
-    Strength levels based on entropy bits:
-    - < 28 bits: Very Weak (red)
-    - 28-35 bits: Weak (orange)
-    - 36-59 bits: Fair (yellow)
-    - 60-127 bits: Strong (green)
-    - >= 128 bits: Very Strong (cyan)
-    
-    Args:
-        entropy: Password entropy in bits.
-        
-    Returns:
-        Tuple of (strength_label, ansi_color_code).
-        
-    Examples:
-        >>> get_strength_label(25)
-        ('Very Weak', 'red')
-        
-        >>> get_strength_label(80)
-        ('Strong', 'green')
+def strength_label(entropy: float) -> tuple[str, str]:
+    """Return (label, colour) suitable for terminal display.
+
+    Bands aligned with current NIST and CISA guidance for memorised secrets.
     """
     if entropy < 28:
         return ("Very Weak", "red")
-    elif entropy < 36:
+    if entropy < 36:
         return ("Weak", "bright_red")
-    elif entropy < 60:
+    if entropy < 60:
         return ("Fair", "yellow")
-    elif entropy < 128:
+    if entropy < 80:
         return ("Strong", "green")
-    else:
-        return ("Very Strong", "cyan")
+    if entropy < 128:
+        return ("Very Strong", "bright_green")
+    return ("Excellent", "cyan")
+
+
+def crack_times(entropy: float) -> CrackTimes:
+    """Estimate average-case crack times across attacker scenarios."""
+    combos = 2**entropy
+    # Average case: keyspace / 2
+    avg = combos / 2
+
+    return CrackTimes(
+        online_throttled=_format_seconds(avg / 100),
+        online_unthrottled=_format_seconds(avg / 10_000),
+        offline_slow_hash=_format_seconds(avg / 10_000),
+        offline_fast_hash=_format_seconds(avg / 10_000_000_000),
+        offline_specialized=_format_seconds(avg / 1_000_000_000_000),
+    )
+
+
+def _format_seconds(seconds: float) -> str:
+    """Render a duration as a short human-readable string."""
+    if seconds < 1e-3:
+        return "instantly"
+    if seconds < 1:
+        return f"{seconds*1000:.0f} ms"
+    if seconds < 60:
+        return f"{seconds:.0f} seconds"
+    if seconds < 3_600:
+        return f"{seconds/60:.0f} minutes"
+    if seconds < 86_400:
+        return f"{seconds/3_600:.0f} hours"
+    if seconds < 31_536_000:
+        return f"{seconds/86_400:.0f} days"
+    years = seconds / 31_536_000
+    if years < 1_000:
+        return f"{years:,.0f} years"
+    if years < 1_000_000:
+        return f"{years/1_000:.0f}k years"
+    if years < 1_000_000_000:
+        return f"{years/1_000_000:.0f}M years"
+    if years < 1e15:
+        return f"{years/1_000_000_000:.0f}B years"
+    return "longer than the age of the universe"
+
+
+# ── Back-compat aliases (2.x callers) ─────────────────────────────────
+calculate_entropy = estimate_entropy
+get_strength_label = strength_label
 
 
 def get_crack_time_estimate(entropy: float) -> str:
-    """Estimate time to crack password based on entropy.
-    
-    Assumes an attacker can try 10 billion (10^10) passwords per second,
-    which is achievable with modern GPU clusters.
-    
-    Args:
-        entropy: Password entropy in bits.
-        
-    Returns:
-        Human-readable time estimate string.
-    """
-    # Number of possible combinations
-    combinations = 2 ** entropy
-    
-    # Assume 10 billion attempts per second
-    attempts_per_second = 10_000_000_000
-    
-    # Time in seconds (on average, half the keyspace)
-    seconds = combinations / (2 * attempts_per_second)
-    
-    if seconds < 1:
-        return "instantly"
-    elif seconds < 60:
-        return f"{seconds:.0f} seconds"
-    elif seconds < 3600:
-        return f"{seconds / 60:.0f} minutes"
-    elif seconds < 86400:
-        return f"{seconds / 3600:.0f} hours"
-    elif seconds < 31536000:
-        return f"{seconds / 86400:.0f} days"
-    elif seconds < 31536000 * 100:
-        return f"{seconds / 31536000:.0f} years"
-    elif seconds < 31536000 * 1000000:
-        return f"{seconds / 31536000:.0f} years"
-    else:
-        return "centuries"
+    """Back-compat: the single-string crack-time used in 2.x."""
+    return crack_times(entropy).offline_fast_hash

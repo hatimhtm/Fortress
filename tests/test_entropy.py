@@ -1,105 +1,75 @@
-"""Tests for fortress.core.entropy module."""
+"""Tests for fortress.core.entropy."""
+
+import math
 
 import pytest
 
 from fortress.core.entropy import (
-    calculate_entropy,
-    get_strength_label,
-    get_crack_time_estimate,
+    crack_times,
+    entropy_of_random,
+    estimate_entropy,
+    strength_label,
 )
 
 
-class TestCalculateEntropy:
-    """Tests for calculate_entropy function."""
-    
-    def test_empty_password(self):
-        """Test entropy of empty password is 0."""
-        assert calculate_entropy("") == 0.0
-    
-    def test_single_char_lowercase(self):
-        """Test entropy of single lowercase character."""
-        entropy = calculate_entropy("a")
-        # log2(26) ≈ 4.7
-        assert 4.5 < entropy < 5.0
-    
-    def test_longer_password_higher_entropy(self):
-        """Test that longer passwords have higher entropy."""
-        short = calculate_entropy("abc")
-        long = calculate_entropy("abcdefgh")
-        
-        assert long > short
-    
-    def test_mixed_charset_higher_entropy(self):
-        """Test that mixed charsets increase entropy."""
-        lowercase_only = calculate_entropy("abcdefgh")
-        mixed = calculate_entropy("Abc1!efg")
-        
-        assert mixed > lowercase_only
-    
-    def test_known_entropy_value(self):
-        """Test entropy calculation with known value."""
-        # 8 lowercase chars = 8 * log2(26) ≈ 37.6 bits
-        password = "abcdefgh"
-        entropy = calculate_entropy(password)
-        
-        assert 37 < entropy < 38
+class TestEntropyOfRandom:
+    def test_exact_value(self):
+        # 20 chars from a 94-char charset
+        assert entropy_of_random(20, 94) == pytest.approx(20 * math.log2(94), rel=1e-6)
+
+    def test_zero_when_charset_trivial(self):
+        assert entropy_of_random(20, 1) == 0.0
+        assert entropy_of_random(0, 94) == 0.0
 
 
-class TestGetStrengthLabel:
-    """Tests for get_strength_label function."""
-    
-    def test_very_weak(self):
-        """Test very weak strength level."""
-        label, color = get_strength_label(20)
-        assert label == "Very Weak"
-        assert color == "red"
-    
-    def test_weak(self):
-        """Test weak strength level."""
-        label, color = get_strength_label(30)
-        assert label == "Weak"
-        assert color == "bright_red"
-    
-    def test_fair(self):
-        """Test fair strength level."""
-        label, color = get_strength_label(50)
-        assert label == "Fair"
-        assert color == "yellow"
-    
-    def test_strong(self):
-        """Test strong strength level."""
-        label, color = get_strength_label(80)
-        assert label == "Strong"
-        assert color == "green"
-    
-    def test_very_strong(self):
-        """Test very strong strength level."""
-        label, color = get_strength_label(140)
-        assert label == "Very Strong"
-        assert color == "cyan"
+class TestEstimateEntropy:
+    def test_empty(self):
+        assert estimate_entropy("") == 0.0
+
+    def test_monotonic_with_length(self):
+        assert estimate_entropy("aaa") < estimate_entropy("aaaaaa")
+
+    def test_mixed_higher_than_single_class(self):
+        assert estimate_entropy("Abc1!xyz") > estimate_entropy("abcdefgh")
+
+    def test_unicode_bonus(self):
+        ascii_only = estimate_entropy("abcdefgh")
+        with_unicode = estimate_entropy("abcdefg€")
+        assert with_unicode > ascii_only
 
 
-class TestGetCrackTimeEstimate:
-    """Tests for get_crack_time_estimate function."""
-    
-    def test_instant_crack(self):
-        """Test very low entropy is cracked instantly."""
-        result = get_crack_time_estimate(10)
-        assert result == "instantly"
-    
-    def test_seconds_range(self):
-        """Test seconds range."""
-        result = get_crack_time_estimate(35)
-        assert "second" in result.lower() or "instant" in result.lower()
-    
-    def test_high_entropy_centuries(self):
-        """Test very high entropy takes centuries."""
-        result = get_crack_time_estimate(200)
-        assert "centur" in result.lower() or "year" in result.lower()
-    
-    def test_returns_string(self):
-        """Test that function always returns a string."""
-        for entropy in [0, 10, 50, 100, 200]:
-            result = get_crack_time_estimate(entropy)
-            assert isinstance(result, str)
-            assert len(result) > 0
+class TestStrengthLabel:
+    @pytest.mark.parametrize(
+        "entropy,expected",
+        [
+            (20, "Very Weak"),
+            (30, "Weak"),
+            (50, "Fair"),
+            (70, "Strong"),
+            (100, "Very Strong"),
+            (140, "Excellent"),
+        ],
+    )
+    def test_bands(self, entropy, expected):
+        label, _ = strength_label(entropy)
+        assert label == expected
+
+
+class TestCrackTimes:
+    def test_returns_all_scenarios(self):
+        t = crack_times(60)
+        for field in (
+            "online_throttled",
+            "online_unthrottled",
+            "offline_slow_hash",
+            "offline_fast_hash",
+            "offline_specialized",
+        ):
+            value = getattr(t, field)
+            assert isinstance(value, str) and value
+
+    def test_higher_entropy_takes_longer(self):
+        weak = crack_times(20).offline_fast_hash
+        strong = crack_times(120).offline_fast_hash
+        assert any(unit in strong for unit in ("years", "universe"))
+        assert any(unit in weak for unit in ("instant", "ms", "second", "minute", "hour"))
