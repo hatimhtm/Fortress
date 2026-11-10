@@ -175,34 +175,38 @@ def passphrase(
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
     """Generate an EFF Diceware passphrase (7,776-word list, ~12.9 bits per word)."""
-    per_word = bits_per_word()
-    for _ in range(count):
-        phrase = generate_passphrase(
-            word_count=words,
-            separator=separator,
-            capitalize=capitalize,
-            add_number=add_number,
-            add_symbol=add_symbol,
-        )
-        # Random words contribute exactly bits_per_word; sprinkled digit/symbol are bonus
-        entropy = words * per_word + (3.32 if add_number else 0) + (5.0 if add_symbol else 0)
-
-        if json_out:
-            label, _ = strength_label(entropy)
-            _emit_json(
-                {
-                    "passphrase": phrase,
-                    "word_count": words,
-                    "entropy_bits": round(entropy, 2),
-                    "strength": label,
-                    "crack_times": dataclasses.asdict(crack_times(entropy)),
-                }
+    try:
+        per_word = bits_per_word()
+        for _ in range(count):
+            phrase = generate_passphrase(
+                word_count=words,
+                separator=separator,
+                capitalize=capitalize,
+                add_number=add_number,
+                add_symbol=add_symbol,
             )
-            continue
+            # Random words contribute exactly bits_per_word; sprinkled digit/symbol are bonus
+            entropy = words * per_word + (3.32 if add_number else 0) + (5.0 if add_symbol else 0)
 
-        _emit_or_copy(phrase, quiet=quiet, copy_seconds=copy)
-        if not quiet and count == 1:
-            console.print(_strength_table(phrase, entropy))
+            if json_out:
+                label, _ = strength_label(entropy)
+                _emit_json(
+                    {
+                        "passphrase": phrase,
+                        "word_count": words,
+                        "entropy_bits": round(entropy, 2),
+                        "strength": label,
+                        "crack_times": dataclasses.asdict(crack_times(entropy)),
+                    }
+                )
+                continue
+
+            _emit_or_copy(phrase, quiet=quiet, copy_seconds=copy)
+            if not quiet and count == 1:
+                console.print(_strength_table(phrase, entropy))
+    except ValueError as exc:
+        err_console.print(f"[red]✗ {exc}[/red]")
+        raise typer.Exit(1) from exc
 
 
 @app.command()
